@@ -97,13 +97,13 @@ pub fn collect_editor_input(scheme: EditorInputScheme) -> EditorInput {
             let gamepad = gamepad_system.gamepad(ix);
 
             if let Some(gamepad) = gamepad {
-                input.action = gamepad.digital_inputs.activated(Button::B);
-                input.back = gamepad.digital_inputs.activated(Button::A);
-                input.context_menu = gamepad.digital_inputs.activated(Button::X);
+                input.action = gamepad.digital_inputs.activated(Button::East);
+                input.back = gamepad.digital_inputs.activated(Button::South);
+                input.context_menu = gamepad.digital_inputs.activated(Button::West);
 
                 input.camera_move_direction = {
-                    let direction_x = gamepad.analog_inputs.value(Axis::LeftX);
-                    let direction_y = gamepad.analog_inputs.value(Axis::LeftY);
+                    let direction_x = gamepad.analog_inputs.value(Axis::LeftStickX);
+                    let direction_y = gamepad.analog_inputs.value(Axis::LeftStickY);
 
                     let direction = vec2(direction_x, direction_y);
 
@@ -111,8 +111,8 @@ pub fn collect_editor_input(scheme: EditorInputScheme) -> EditorInput {
                 };
 
                 input.cursor_move_direction = {
-                    let direction_x = gamepad.analog_inputs.value(Axis::RightX);
-                    let direction_y = gamepad.analog_inputs.value(Axis::RightY);
+                    let direction_x = gamepad.analog_inputs.value(Axis::RightStickX);
+                    let direction_y = gamepad.analog_inputs.value(Axis::RightStickY);
 
                     let direction = vec2(direction_x, direction_y);
 

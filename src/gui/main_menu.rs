@@ -269,7 +269,7 @@ fn local_game_ui(ui: &mut ui::Ui, player_input: &mut Vec<GameInputScheme>) -> Op
     } else {
         let gamepad_context = storage::get::<GamepadContext>();
         if is_key_pressed(KeyCode::Escape)
-            || is_gamepad_btn_pressed(Some(&gamepad_context), Button::B)
+            || is_gamepad_btn_pressed(Some(&gamepad_context), Button::East)
         {
             return Some(Menu::CANCEL_INDEX.into());
         }

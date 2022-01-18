@@ -125,7 +125,8 @@ pub async fn show_create_map_menu() -> Result<Option<MapResource>> {
                 ui.separator();
                 ui.separator();
 
-                let btn_a = is_gamepad_btn_pressed(Some(&gamepad_system), fishsticks::Button::A);
+                let btn_a =
+                    is_gamepad_btn_pressed(Some(&gamepad_system), fishsticks::Button::South);
                 let enter = is_key_pressed(KeyCode::Enter);
 
                 if ui.button(None, "Confirm") || btn_a || enter {
@@ -151,7 +152,7 @@ pub async fn show_create_map_menu() -> Result<Option<MapResource>> {
 
                 ui.same_line(0.0);
 
-                let btn_b = is_gamepad_btn_pressed(Some(&gamepad_system), fishsticks::Button::B);
+                let btn_b = is_gamepad_btn_pressed(Some(&gamepad_system), fishsticks::Button::East);
                 let escape = is_key_pressed(KeyCode::Escape);
 
                 if ui.button(None, "Cancel") || btn_b || escape {

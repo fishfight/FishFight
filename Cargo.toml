@@ -8,13 +8,14 @@ edition = "2018"
 opt-level = 3
 
 [dependencies]
+crossbow = "0.1"
 macroquad = { version = "0.3.10" }
 macroquad-platformer = "0.1"
 macroquad-profiler = "0.1"
 
 ff-particles = { version = "0.1", features = ["serde"] }
 
-fishsticks = "0.2.0"
+fishsticks = { version = "0.2.0", default-features = false, features = ["gilrs"] }
 
 stunclient = { git = "https://github.com/not-fl3/rust-stunclient", default-features = false }
 
@@ -23,3 +24,15 @@ serde_json = "1.0"
 bincode = "1.3.3"
 
 hecs = "0.7.1"
+
+[patch.crates-io]
+gilrs = { git = "https://github.com/enfipy/gilrs", rev = "b5bc88bc173cc2734734aaaf3cfd8cc237e5a0f9" }
+
+[package.metadata]
+app_name = "Fish Fight"
+target_sdk_version = 30
+version_code = "1"
+
+android_build_targets = ["aarch64-linux-android"]
+android_assets = "assets"
+

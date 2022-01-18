@@ -72,21 +72,21 @@ pub fn collect_local_input(input_scheme: GameInputScheme) -> GameInput {
             let gamepad = gamepad_context.gamepad(ix);
 
             if let Some(gamepad) = gamepad {
-                input.pickup = gamepad.digital_inputs.just_activated(Button::X);
-                input.fire = gamepad.digital_inputs.activated(Button::B);
+                input.pickup = gamepad.digital_inputs.just_activated(Button::West);
+                input.fire = gamepad.digital_inputs.activated(Button::East);
 
-                input.jump = gamepad.digital_inputs.just_activated(Button::A);
+                input.jump = gamepad.digital_inputs.just_activated(Button::South);
 
                 input.left = gamepad.digital_inputs.activated(Button::DPadLeft)
-                    || gamepad.analog_inputs.digital_value(Axis::LeftX) < 0.0;
+                    || gamepad.analog_inputs.digital_value(Axis::LeftStickX) < 0.0;
 
                 input.right = gamepad.digital_inputs.activated(Button::DPadRight)
-                    || gamepad.analog_inputs.digital_value(Axis::LeftX) > 0.0;
+                    || gamepad.analog_inputs.digital_value(Axis::LeftStickX) > 0.0;
 
                 input.down = gamepad.digital_inputs.activated(Button::DPadDown)
-                    || gamepad.analog_inputs.digital_value(Axis::LeftY) > 0.0;
+                    || gamepad.analog_inputs.digital_value(Axis::LeftStickY) > 0.0;
 
-                input.slide = gamepad.digital_inputs.just_activated(Button::Y)
+                input.slide = gamepad.digital_inputs.just_activated(Button::North)
             }
         }
     }

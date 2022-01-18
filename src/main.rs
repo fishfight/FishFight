@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
     use events::iter_events;
     use gui::MainMenuResult;
 
-    let assets_dir = env::var(ASSETS_DIR_ENV_VAR).unwrap_or_else(|_| "./assets".to_string());
+    let assets_dir = env::var(ASSETS_DIR_ENV_VAR).unwrap_or_else(|_| "".to_string());
 
     rand::srand(0);
 

@@ -412,10 +412,10 @@ impl Menu {
             for (_, gamepad) in gamepad_context.gamepads() {
                 gamepad_up = gamepad_up
                     || gamepad.digital_inputs.activated(Button::DPadUp)
-                    || gamepad.analog_inputs.digital_value(Axis::LeftY) < 0.0;
+                    || gamepad.analog_inputs.digital_value(Axis::LeftStickY) < 0.0;
                 gamepad_down = gamepad_down
                     || gamepad.digital_inputs.activated(Button::DPadDown)
-                    || gamepad.analog_inputs.digital_value(Axis::LeftY) > 0.0;
+                    || gamepad.analog_inputs.digital_value(Axis::LeftStickY) > 0.0;
             }
 
             if self.up_grace_timer >= Self::NAVIGATION_GRACE_TIME
@@ -459,10 +459,10 @@ impl Menu {
                 self.current_selection = Some(selection);
             }
 
-            let should_confirm = is_gamepad_btn_pressed(Some(&gamepad_context), Button::A)
+            let should_confirm = is_gamepad_btn_pressed(Some(&gamepad_context), Button::South)
                 || is_key_pressed(KeyCode::Enter);
 
-            let should_cancel = is_gamepad_btn_pressed(Some(&gamepad_context), Button::B)
+            let should_cancel = is_gamepad_btn_pressed(Some(&gamepad_context), Button::East)
                 || is_key_pressed(KeyCode::Escape);
 
             (should_confirm, should_cancel)
