@@ -1,14 +1,19 @@
 use hecs::{Entity, World};
+use hv_cell::AtomicRefCell;
 use macroquad::audio::play_sound_once;
 use macroquad::color;
 
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
+use mlua::{FromLua, ToLua};
 use serde::{Deserialize, Serialize};
+use tealr::mlu::TealData;
 
 use core::math::{deg_to_rad, rotate_vector, IsZero};
 use core::Result;
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::Resources;
 use crate::{PassiveEffectInstance, PassiveEffectMetadata};
@@ -28,16 +33,24 @@ pub use projectiles::ProjectileKind;
 
 const COLLIDER_DEBUG_DRAW_TTL: f32 = 0.5;
 
+use hv_lua as mlua;
+use tealr::{MluaTealDerive, TypeBody, TypeName};
+#[derive(Clone, MluaTealDerive)]
 struct CircleCollider {
     r: f32,
     ttl_timer: f32,
 }
 
+impl TealData for CircleCollider {}
+
+#[derive(Clone, MluaTealDerive)]
 struct RectCollider {
     w: f32,
     h: f32,
     ttl_timer: f32,
 }
+
+impl TealData for RectCollider {}
 
 pub fn spawn_active_effect(
     world: &mut World,
@@ -197,7 +210,7 @@ pub fn spawn_active_effect(
 
 /// This holds all the common parameters, available to all implementations, as well as specialized
 /// parameters, in the `ActiveEffectKind`.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, TypeName)]
 pub struct ActiveEffectMetadata {
     /// This holds all the specialized parameters for the effect, dependent on the implementation,
     /// specified by its variant. It is flattened into this struct in JSON.
@@ -218,12 +231,132 @@ pub struct ActiveEffectMetadata {
     pub delay: f32,
 }
 
+impl TypeBody for ActiveEffectMetadata {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields.push((
+            Cow::Borrowed("kind").into(),
+            ActiveEffectKind::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("sound_effect_id").into(),
+            Option::<String>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("delay").into(), f32::get_type_parts()));
+    }
+}
+
+impl<'lua> FromLua<'lua> for ActiveEffectMetadata {
+    fn from_lua(lua_value: mlua::Value<'lua>, _: &'lua mlua::Lua) -> mlua::Result<Self> {
+        let table = core::lua::get_table(lua_value)?;
+        Ok(Self {
+            kind: Box::new(table.get::<_, ActiveEffectKind>("kind")?),
+            sound_effect_id: table.get("sound_effect_id")?,
+            delay: table.get("delay")?,
+        })
+    }
+}
+
+impl<'lua> ToLua<'lua> for ActiveEffectMetadata {
+    fn to_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("kind", *self.kind)?;
+        table.set("sound_effect_id", self.sound_effect_id)?;
+        table.set("delay", self.delay)?;
+        lua.pack(table)
+    }
+}
+
+#[derive(Clone, MluaTealDerive)]
+pub struct ActiveEffectKindCircleCollider {
+    radius: f32,
+    passive_effects: Vec<PassiveEffectMetadata>,
+    is_lethal: bool,
+    is_explosion: bool,
+}
+impl TealData for ActiveEffectKindCircleCollider {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("to_active_effect_kind", |_, this, ()| {
+            Ok(ActiveEffectKind::CircleCollider {
+                radius: this.radius,
+                passive_effects: this.passive_effects.to_owned(),
+                is_lethal: this.is_lethal,
+                is_explosion: this.is_explosion,
+            })
+        })
+    }
+}
+
+#[derive(Clone, MluaTealDerive)]
+pub struct ActiveEffectKindRectCollider {
+    width: f32,
+    height: f32,
+    /// If `true` the effect will do damage to any player it hits
+    is_lethal: bool,
+    /// This contains any passive effects that will be spawned on collision
+    passive_effects: Vec<PassiveEffectMetadata>,
+}
+
+impl TealData for ActiveEffectKindRectCollider {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("to_active_effect_kind", |_, this, ()| {
+            Ok(ActiveEffectKind::RectCollider {
+                width: this.width,
+                height: this.height,
+                is_lethal: this.is_lethal,
+                passive_effects: this.passive_effects.to_owned(),
+            })
+        })
+    }
+}
+#[derive(Clone, MluaTealDerive)]
+pub struct ActiveEffectKindTriggeredEffect {
+    meta: Box<TriggeredEffectMetadata>,
+}
+impl TealData for ActiveEffectKindTriggeredEffect {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("to_active_effect_kind", |_, this, ()| {
+            Ok(ActiveEffectKind::TriggeredEffect {
+                meta: this.meta.to_owned(),
+            })
+        })
+    }
+}
+
+#[derive(Clone, MluaTealDerive)]
+pub struct ActiveEffectKindProjectile {
+    kind: ProjectileKind,
+    speed: f32,
+    range: f32,
+    spread: f32,
+    /// If `true` the effect will do damage to any player it hits
+    is_lethal: bool,
+    /// This contains any passive effects that will be spawned on collision
+    passive_effects: Vec<PassiveEffectMetadata>,
+    /// Particle effects that will be attached to the projectile
+    particles: Vec<ParticleEmitterMetadata>,
+}
+impl TealData for ActiveEffectKindProjectile {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("to_active_effect_kind", |_, this, ()| {
+            Ok(ActiveEffectKind::Projectile {
+                kind: this.kind.to_owned(),
+                speed: this.speed,
+                range: this.range,
+                spread: this.spread,
+                is_lethal: this.is_lethal,
+                passive_effects: this.passive_effects.to_owned(),
+                particles: this.particles.to_owned(),
+            })
+        })
+    }
+}
 /// This should hold implementations of the commonly used weapon effects, that see usage spanning
 /// many different weapon implementations.
 ///
 /// The effects that have the `Collider` suffix denote effects that do an immediate collider check,
 /// upon attack, using the weapons `effect_offset` as origin.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, MluaTealDerive)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActiveEffectKind {
     /// Check for hits with a `Circle` collider.
@@ -284,7 +417,94 @@ pub enum ActiveEffectKind {
     },
 }
 
-pub fn debug_draw_active_effects(world: &mut World) {
+impl TealData for ActiveEffectKind {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("try_get_circle_collider", |_, this, ()| {
+            if let ActiveEffectKind::CircleCollider {
+                radius,
+                passive_effects,
+                is_lethal,
+                is_explosion,
+            } = this
+            {
+                Ok((
+                    true,
+                    Some(ActiveEffectKindCircleCollider {
+                        radius: *radius,
+                        passive_effects: passive_effects.to_owned(),
+                        is_lethal: *is_lethal,
+                        is_explosion: *is_explosion,
+                    }),
+                ))
+            } else {
+                Ok((false, None))
+            }
+        });
+        methods.add_method("try_get_rect_collider", |_, this, ()| {
+            if let ActiveEffectKind::RectCollider {
+                width,
+                height,
+                is_lethal,
+                passive_effects,
+            } = this
+            {
+                Ok((
+                    true,
+                    Some(ActiveEffectKindRectCollider {
+                        width: *width,
+                        height: *height,
+                        is_lethal: *is_lethal,
+                        passive_effects: passive_effects.to_owned(),
+                    }),
+                ))
+            } else {
+                Ok((false, None))
+            }
+        });
+        methods.add_method("try_get_triggered_effect", |_, this, ()| {
+            if let ActiveEffectKind::TriggeredEffect { meta } = this {
+                Ok((
+                    true,
+                    Some(ActiveEffectKindTriggeredEffect {
+                        meta: meta.to_owned(),
+                    }),
+                ))
+            } else {
+                Ok((false, None))
+            }
+        });
+        methods.add_method("try_get_triggered_projectile", |_, this, ()| {
+            if let ActiveEffectKind::Projectile {
+                kind,
+                speed,
+                range,
+                spread,
+                is_lethal,
+                passive_effects,
+                particles,
+            } = this
+            {
+                Ok((
+                    true,
+                    Some(ActiveEffectKindProjectile {
+                        kind: kind.to_owned(),
+                        speed: *speed,
+                        range: *range,
+                        spread: *spread,
+                        is_lethal: *is_lethal,
+                        passive_effects: passive_effects.to_owned(),
+                        particles: particles.to_owned(),
+                    }),
+                ))
+            } else {
+                Ok((false, None))
+            }
+        })
+    }
+}
+
+pub fn debug_draw_active_effects(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     let mut to_remove = Vec::new();
 
     let dt = get_frame_time();

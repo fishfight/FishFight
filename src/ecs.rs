@@ -1,10 +1,23 @@
-use hecs::{Entity, World};
+use std::sync::Arc;
 
-pub type SystemFn = fn(&mut World);
+use hecs::{Entity, World};
+use hv_cell::AtomicRefCell;
+use hv_lua::UserData;
+use tealr::{mlu::TealData, TypeBody, TypeName};
+
+pub type SystemFn = fn(Arc<AtomicRefCell<World>>);
 
 /// This is used as a component to signify ownership
+#[derive(Clone, TypeName)]
 pub struct Owner(pub Entity);
 
+impl UserData for Owner {}
+impl TealData for Owner {}
+impl TypeBody for Owner {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.is_user_data = true;
+    }
+}
 /// Placeholder until we implement threading
 #[derive(Default)]
 pub struct SchedulerBuilder {
@@ -53,9 +66,9 @@ impl Scheduler {
         SchedulerBuilder::default()
     }
 
-    pub fn execute(&mut self, world: &mut World) {
+    pub fn execute(&mut self, world: Arc<AtomicRefCell<World>>) {
         for f in &mut self.steps {
-            f(world);
+            f(world.clone());
         }
     }
 }

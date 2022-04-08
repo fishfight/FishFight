@@ -1,19 +1,24 @@
-use std::collections::HashMap;
+use core::lua::get_table;
+use core::lua::wrapped_types::{ColorLua, RectLua, Texture2DLua, Vec2Lua};
 use std::iter::FromIterator;
 use std::ops::Div;
+use std::{borrow::Cow, collections::HashMap};
 
+use hv_lua::{FromLua, ToLua, UserData};
 use macroquad::color;
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
 use serde::{Deserialize, Serialize};
+use tealr::mlu::{MaybeSend, TealData, UserDataWrapper};
+use tealr::{TypeBody, TypeName};
 
 use core::Transform;
 
 use crate::Resources;
 
 /// Parameters for `Sprite` component.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, tealr::TypeName)]
 pub struct SpriteMetadata {
     /// The id of the texture that will be used
     #[serde(rename = "texture")]
@@ -58,6 +63,37 @@ pub struct SpriteMetadata {
     pub is_deactivated: bool,
 }
 
+impl TypeBody for SpriteMetadata {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields
+            .push((Cow::Borrowed("texture").into(), String::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("index").into(), usize::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("scale").into(),
+            Option::<f32>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("offset").into(), Vec2Lua::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("pivot").into(),
+            Option::<Vec2Lua>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("size").into(),
+            Option::<Vec2Lua>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("tint").into(),
+            Option::<ColorLua>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("is_deactivated").into(),
+            bool::get_type_parts(),
+        ));
+    }
+}
+
 impl Default for SpriteMetadata {
     fn default() -> Self {
         SpriteMetadata {
@@ -73,7 +109,7 @@ impl Default for SpriteMetadata {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TypeName)]
 pub struct Sprite {
     pub texture: Texture2D,
     pub source_rect: Rect,
@@ -84,6 +120,67 @@ pub struct Sprite {
     pub is_flipped_x: bool,
     pub is_flipped_y: bool,
     pub is_deactivated: bool,
+}
+
+impl UserData for Sprite {
+    fn add_fields<'lua, F: hv_lua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        let mut wrapper = UserDataWrapper::from_user_data_fields(fields);
+        <Self as TealData>::add_fields(&mut wrapper)
+    }
+    fn add_methods<'lua, M: hv_lua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        let mut wrapper = UserDataWrapper::from_user_data_methods(methods);
+        <Self as TealData>::add_methods(&mut wrapper)
+    }
+    fn add_type_methods<'lua, M: hv_lua::UserDataMethods<'lua, hv_alchemy::Type<Self>>>(
+        methods: &mut M,
+    ) where
+        Self: 'static + MaybeSend,
+    {
+        let mut wrapper = UserDataWrapper::from_user_data_methods(methods);
+        <Self as TealData>::add_type_methods(&mut wrapper)
+    }
+}
+impl TealData for Sprite {
+    fn add_fields<'lua, F: tealr::mlu::TealDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_method_get("texture", |_, this| Ok(Texture2DLua::from(this.texture)));
+        fields.add_field_method_get("source_rect", |_, this| Ok(RectLua::from(this.source_rect)));
+        fields.add_field_method_get("tint", |_, this| Ok(ColorLua::from(this.tint)));
+        fields.add_field_method_get("scale", |_, this| Ok(this.scale));
+        fields.add_field_method_get("offset", |_, this| Ok(Vec2Lua::from(this.offset)));
+        fields.add_field_method_get("pivot", |_, this| Ok(this.pivot.map(Vec2Lua::from)));
+        fields.add_field_method_get("is_flipped_x", |_, this| Ok(this.is_flipped_x));
+        fields.add_field_method_get("is_flipped_y", |_, this| Ok(this.is_flipped_y));
+        fields.add_field_method_get("is_deactivated", |_, this| Ok(this.is_deactivated));
+    }
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("size", |_, this, ()| Ok(Vec2Lua::from(this.size())));
+        methods.add_method_mut("set_scale", |_, this, scale| {
+            this.set_scale(scale);
+            Ok(())
+        })
+    }
+
+    fn add_type_methods<'lua, M: tealr::mlu::TealDataMethods<'lua, hv_alchemy::Type<Self>>>(
+        methods: &mut M,
+    ) where
+        Self: 'static + MaybeSend,
+    {
+        methods.add_function("new", |_, (texture, params): (String, SpriteParams)| {
+            Ok(Self::new(&texture, params))
+        })
+    }
+}
+impl TypeBody for Sprite {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.is_user_data = true;
+        <Self as TealData>::add_fields(gen);
+        <Self as TealData>::add_methods(gen);
+    }
+
+    fn get_type_body_marker(gen: &mut tealr::TypeGenerator) {
+        gen.is_user_data = true;
+        <Self as TealData>::add_type_methods(gen);
+    }
 }
 
 impl Sprite {
@@ -146,7 +243,7 @@ impl Sprite {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, TypeName)]
 pub struct SpriteParams {
     pub sprite_size: Option<Vec2>,
     pub index: usize,
@@ -158,6 +255,77 @@ pub struct SpriteParams {
     pub is_flipped_x: bool,
     pub is_flipped_y: bool,
     pub is_deactivated: bool,
+}
+
+impl<'lua> FromLua<'lua> for SpriteParams {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = get_table(lua_value)?;
+        Ok(Self {
+            sprite_size: table
+                .get::<_, Option<Vec2Lua>>("sprite_size")?
+                .map(Vec2::from),
+            index: table.get("index")?,
+            scale: table.get("scale")?,
+            offset: table.get::<_, Vec2Lua>("offset")?.into(),
+            pivot: table.get::<_, Option<Vec2Lua>>("pivot")?.map(Vec2::from),
+            size: table.get::<_, Option<Vec2Lua>>("size")?.map(Vec2::from),
+            tint: table.get::<_, Option<ColorLua>>("tint")?.map(Color::from),
+            is_flipped_x: table.get("is_flipped_x")?,
+            is_flipped_y: table.get("is_flipped_y")?,
+            is_deactivated: table.get("is_deactivated")?,
+        })
+    }
+}
+impl<'lua> ToLua<'lua> for SpriteParams {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("sprite_size", self.sprite_size.map(Vec2Lua::from))?;
+        table.set("index", self.index)?;
+        table.set("scale", self.scale)?;
+        table.set("offset", Vec2Lua::from(self.offset))?;
+        table.set("pivot", self.pivot.map(Vec2Lua::from))?;
+        table.set("size", self.size.map(Vec2Lua::from))?;
+        table.set("tint", self.tint.map(ColorLua::from))?;
+        table.set("is_flipped_x", self.is_flipped_x)?;
+        table.set("is_flipped_y", self.is_flipped_y)?;
+        table.set("is_deactivated", self.is_deactivated)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for SpriteParams {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields.push((
+            Cow::Borrowed("sprite_size").into(),
+            Option::<Vec2Lua>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("index").into(), usize::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("scale").into(), f32::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("offset").into(), Vec2Lua::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("pivot").into(),
+            Option::<Vec2Lua>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("size").into(),
+            Option::<Vec2Lua>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("tint").into(),
+            Option::<ColorLua>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_flipped_x").into(), bool::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("is_flipped_y").into(), bool::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("is_deactivated").into(),
+            bool::get_type_parts(),
+        ));
+    }
 }
 
 impl Default for SpriteParams {
@@ -228,7 +396,7 @@ pub fn debug_draw_one_sprite(position: Vec2, sprite: &Sprite) {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, TypeName)]
 pub struct SpriteSet {
     pub draw_order: Vec<String>,
     pub map: HashMap<String, Sprite>,
@@ -245,6 +413,55 @@ impl From<&[(&str, Sprite)]> for SpriteSet {
         );
 
         SpriteSet { draw_order, map }
+    }
+}
+
+impl UserData for SpriteSet {
+    fn add_methods<'lua, M: hv_lua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        let mut wrapper = UserDataWrapper::from_user_data_methods(methods);
+        <Self as TealData>::add_methods(&mut wrapper)
+    }
+    fn add_type_methods<'lua, M: hv_lua::UserDataMethods<'lua, hv_alchemy::Type<Self>>>(
+        methods: &mut M,
+    ) where
+        Self: 'static + MaybeSend,
+    {
+        let mut wrapper = UserDataWrapper::from_user_data_methods(methods);
+        <Self as TealData>::add_type_methods(&mut wrapper)
+    }
+}
+impl TealData for SpriteSet {
+    fn add_methods<'lua, T: tealr::mlu::TealDataMethods<'lua, Self>>(methods: &mut T) {
+        methods.add_method("is_empty", |_, this, ()| Ok(this.is_empty()));
+        methods.add_method_mut("flip_all_x", |_, this, state| {
+            this.flip_all_x(state);
+            Ok(())
+        });
+        methods.add_method_mut("flip_all_x", |_, this, state| {
+            this.flip_all_y(state);
+            Ok(())
+        });
+        methods.add_method_mut("activate_all", |_, this, ()| {
+            this.activate_all();
+            Ok(())
+        });
+        methods.add_method_mut("deactivate_all", |_, this, ()| {
+            this.deactivate_all();
+            Ok(())
+        });
+    }
+    fn add_type_methods<'lua, M: tealr::mlu::TealDataMethods<'lua, hv_alchemy::Type<Self>>>(
+        _methods: &mut M,
+    ) where
+        Self: 'static + MaybeSend,
+    {
+    }
+}
+
+impl TypeBody for SpriteSet {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.is_user_data = true;
+        <Self as TealData>::add_methods(gen);
     }
 }
 

@@ -1,12 +1,18 @@
+use hv_cell::AtomicRefCell;
+use hv_lua::{FromLua, ToLua};
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
 use hecs::{Entity, World};
 
 use serde::{Deserialize, Serialize};
+use tealr::{TypeBody, TypeName};
 
+use core::lua::get_table;
 use core::math::deg_to_rad;
 use core::{Result, Transform};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::effects::active::spawn_active_effect;
 use crate::particles::{ParticleEmitter, ParticleEmitterMetadata};
@@ -18,7 +24,7 @@ use crate::{Drawable, PhysicsBodyParams};
 const TRIGGERED_EFFECT_DRAW_ORDER: u32 = 5;
 
 /// The various collision types that can trigger a `TriggeredEffect`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, TypeName)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggeredEffectTrigger {
     /// The player that deployed the effect
@@ -32,7 +38,21 @@ pub enum TriggeredEffectTrigger {
     /// Projectile hit
     Projectile,
 }
+impl<'lua> FromLua<'lua> for TriggeredEffectTrigger {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, lua: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        hv_lua::LuaSerdeExt::from_value(lua, lua_value)
+    }
+}
+impl<'lua> ToLua<'lua> for TriggeredEffectTrigger {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        hv_lua::LuaSerdeExt::to_value(lua, &self)
+    }
+}
+impl TypeBody for TriggeredEffectTrigger {
+    fn get_type_body(_: &mut tealr::TypeGenerator) {}
+}
 
+#[derive(Clone, TypeName)]
 pub struct TriggeredEffect {
     pub owner: Entity,
     pub trigger: Vec<TriggeredEffectTrigger>,
@@ -52,6 +72,111 @@ pub struct TriggeredEffect {
     pub activation_timer: f32,
     pub trigger_delay_timer: f32,
     pub timed_trigger_timer: f32,
+}
+
+impl<'lua> FromLua<'lua> for TriggeredEffect {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = get_table(lua_value)?;
+        Ok(Self {
+            owner: table.get("owner")?,
+            trigger: table.get("trigger")?,
+            effects: table.get("effects")?,
+            activation_delay: table.get("activation_delay")?,
+            trigger_delay: table.get("trigger_delay")?,
+            timed_trigger: table.get("timed_trigger")?,
+            is_kickable: table.get("is_kickable")?,
+            should_override_delay: table.get("should_override_delay")?,
+            should_collide_with_platforms: table.get("should_collide_with_platforms")?,
+            is_triggered: table.get("is_triggered")?,
+            triggered_by: table.get("triggered_by")?,
+            kick_delay_timer: table.get("kick_delay_timer")?,
+            activation_timer: table.get("activation_timer")?,
+            trigger_delay_timer: table.get("trigger_delay_timer")?,
+            timed_trigger_timer: table.get("timed_trigger_timer")?,
+        })
+    }
+}
+
+impl<'lua> ToLua<'lua> for TriggeredEffect {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("owner", self.owner)?;
+        table.set("trigger", self.trigger)?;
+        table.set("effects", self.effects)?;
+        table.set("activation_delay", self.activation_delay)?;
+        table.set("trigger_delay", self.trigger_delay)?;
+        table.set("timed_trigger", self.timed_trigger)?;
+        table.set("is_kickable", self.is_kickable)?;
+        table.set("should_override_delay", self.should_override_delay)?;
+        table.set(
+            "should_collide_with_platforms",
+            self.should_collide_with_platforms,
+        )?;
+        table.set("is_triggered", self.is_triggered)?;
+        table.set("triggered_by", self.triggered_by)?;
+        table.set("kick_delay_timer", self.kick_delay_timer)?;
+        table.set("activation_timer", self.activation_timer)?;
+        table.set("trigger_delay_timer", self.trigger_delay_timer)?;
+        table.set("timed_trigger_timer", self.timed_trigger_timer)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for TriggeredEffect {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields
+            .push((Cow::Borrowed("owner").into(), Entity::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("trigger").into(),
+            Vec::<TriggeredEffectTrigger>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("effects").into(),
+            Vec::<ActiveEffectMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("activation_delay").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("trigger_delay").into(), f32::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("timed_trigger").into(),
+            Option::<f32>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_kickable").into(), bool::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("should_override_delay").into(),
+            bool::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("should_collide_with_platforms").into(),
+            bool::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_triggered").into(), bool::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("triggered_by").into(),
+            Option::<Entity>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("kick_delay_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("activation_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("trigger_delay_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("timed_trigger_timer").into(),
+            f32::get_type_parts(),
+        ));
+    }
 }
 
 impl TriggeredEffect {
@@ -156,7 +281,8 @@ pub fn spawn_triggered_effect(
 const KICK_FORCE: f32 = 15.0;
 const KICK_DELAY: f32 = 0.22;
 
-pub fn fixed_update_triggered_effects(world: &mut World) {
+pub fn fixed_update_triggered_effects(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     let dt = get_frame_time();
 
     let mut to_trigger = Vec::new();
@@ -266,7 +392,7 @@ pub fn fixed_update_triggered_effects(world: &mut World) {
 
     for (e, _, owner, origin, effects) in to_trigger.drain(0..) {
         for params in effects {
-            if let Err(err) = spawn_active_effect(world, owner, origin, params) {
+            if let Err(err) = spawn_active_effect(&mut world, owner, origin, params) {
                 #[cfg(debug_assertions)]
                 println!("WARNING: {}", err);
             }

@@ -1,5 +1,8 @@
 use fishsticks::GamepadContext;
+use hecs::{DynamicQuery, Entity, World};
 
+use core::lua::wrapped_types::{ColorLua, RectLua, SoundLua, Texture2DLua, Vec2Lua};
+use core::lua::CloneComponent;
 use std::env;
 use std::path::PathBuf;
 
@@ -24,6 +27,8 @@ pub mod resources;
 
 pub mod drawables;
 
+mod lua;
+
 pub use drawables::*;
 pub use physics::*;
 
@@ -31,8 +36,8 @@ use editor::{Editor, EditorCamera, EditorInputScheme};
 
 use map::{Map, MapLayerKind, MapObjectKind};
 
-use core::network::Api;
 use core::Result;
+use core::{network::Api, Transform};
 
 pub use core::Config;
 pub use items::Item;
@@ -47,9 +52,19 @@ pub use player::PlayerEvent;
 
 pub use ecs::Owner;
 
+use crate::effects::active::projectiles::{Projectile, Rectangle};
+use crate::effects::active::triggered::TriggeredEffect;
+use crate::effects::active::{
+    ActiveEffectKindCircleCollider, ActiveEffectKindProjectile, ActiveEffectKindRectCollider,
+    ActiveEffectKindTriggeredEffect, ProjectileKind,
+};
 use crate::effects::passive::init_passive_effects;
+use crate::effects::TriggeredEffectTrigger;
 use crate::game::GameMode;
-use crate::particles::Particles;
+use crate::items::{ItemDepleteBehavior, ItemDropBehavior, ItemMetadata, Weapon};
+use crate::lua::ActorLua;
+use crate::particles::{ParticleEmitter, ParticleEmitterMetadata, Particles};
+use crate::player::{Player, PlayerEventKind, PlayerInventory, PlayerState};
 use crate::resources::load_resources;
 pub use effects::{
     ActiveEffectKind, ActiveEffectMetadata, PassiveEffectInstance, PassiveEffectMetadata,
@@ -200,6 +215,80 @@ async fn init_game() -> Result<bool> {
 
 #[macroquad::main(window_conf)]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let types = tealr::TypeWalker::new()
+        .process_type::<World>()
+        .process_type::<ParticleEmitterMetadata>()
+        .process_type::<PassiveEffectMetadata>()
+        .process_type::<PlayerEventKind>()
+        .process_type::<Vec2Lua>()
+        .process_type::<ActorLua>()
+        .process_type::<RectLua>()
+        .process_type::<ColorLua>()
+        .process_type::<Entity>()
+        .process_type::<TriggeredEffectTrigger>()
+        .process_type::<ActiveEffectMetadata>()
+        .process_type::<ItemDropBehavior>()
+        .process_type::<ItemDepleteBehavior>()
+        .process_type::<Transform>()
+        .process_type::<PhysicsBody>()
+        .process_type::<RigidBody>()
+        .process_type::<Projectile>()
+        .process_type::<TriggeredEffect>()
+        .process_type::<Item>()
+        .process_type::<Owner>()
+        .process_type::<PlayerInventory>()
+        .process_type::<Player>()
+        .process_type::<PlayerState>()
+        .process_type::<PassiveEffectInstance>()
+        .process_type::<ProjectileKind>()
+        .process_type::<PlayerEvent>()
+        .process_type::<Texture2DLua>()
+        .process_type::<ItemMetadata>()
+        .process_type::<Weapon>()
+        .process_type::<Animation>()
+        .process_type::<Keyframe>()
+        .process_type::<AnimatedSpriteParams>()
+        .process_type::<AnimatedSprite>()
+        .process_type::<QueuedAnimationAction>()
+        .process_type::<Tween>()
+        .process_type::<DynamicQuery>()
+        .process_type::<ParticleEmitter>()
+        .process_type::<ActiveEffectKind>()
+        .process_type::<effects::active::projectiles::Circle>()
+        .process_type::<Rectangle>()
+        .process_type::<effects::active::projectiles::SpriteProjectile>()
+        .process_type::<ActiveEffectKindCircleCollider>()
+        .process_type::<ActiveEffectKindRectCollider>()
+        .process_type::<ActiveEffectKindTriggeredEffect>()
+        .process_type::<ActiveEffectKindProjectile>()
+        .process_type::<SoundLua>()
+        .process_type::<AnimationMetadata>()
+        .process_type::<AnimatedSpriteMetadata>()
+        .process_type::<CloneComponent<tealr::mlu::generics::X>>()
+        .process_type::<TweenMetadata>()
+        .process_type::<Drawable>()
+        .process_type::<SpriteSet>()
+        .process_type::<Sprite>()
+        .process_type::<SpriteParams>()
+        .process_type::<crate::drawables::DrawableKind>()
+        .process_type::<AnimatedSpriteSet>()
+        .process_type::<crate::lua::TypeComponentContainer>()
+        .process_type_as_marker::<CloneComponent<tealr::mlu::generics::X>>()
+        .process_type_as_marker::<Owner>()
+        .process_type_as_marker::<ParticleEmitter>()
+        .process_type_as_marker::<RectLua>()
+        .process_type_as_marker::<Animation>()
+        .process_type_as_marker::<AnimatedSprite>()
+        .process_type_as_marker::<crate::drawables::DrawableKind>()
+        .process_type_as_marker::<AnimatedSpriteSet>()
+        .process_type_as_marker::<Sprite>();
+    println!("time to generate the json files");
+    std::fs::write("./test.json", serde_json::to_string_pretty(&types).unwrap()).unwrap();
+    std::fs::write("./test.d.tl", types.generate_global("test").unwrap()).unwrap();
+    println!("Wrote all!");
+    // println!("Starting embedded lua test");
+    // core::test::test()?;
+    // println!("Ended embedded lua test");
     use events::iter_events;
 
     let assets_dir = env::var(ASSETS_DIR_ENV_VAR).unwrap_or_else(|_| "./assets".to_string());

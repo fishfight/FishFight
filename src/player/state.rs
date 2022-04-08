@@ -1,10 +1,15 @@
+use hv_cell::AtomicRefCell;
+use hv_lua::UserData;
 use macroquad::audio::play_sound_once;
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
 use hecs::{Entity, World};
+use tealr::mlu::TealData;
+use tealr::{TypeBody, TypeName};
 
 use core::Transform;
+use std::sync::Arc;
 
 use crate::player::{
     Player, PlayerAttributes, PlayerController, PlayerEventQueue, JUMP_SOUND_ID, LAND_SOUND_ID,
@@ -16,7 +21,7 @@ const SLIDE_STOP_THRESHOLD: f32 = 2.0;
 const JUMP_FRAME_COUNT: u16 = 8;
 const PLATFORM_JUMP_FORCE_MULTIPLIER: f32 = 0.2;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TypeName)]
 pub enum PlayerState {
     None,
     Jumping,
@@ -27,13 +32,22 @@ pub enum PlayerState {
     Dead,
 }
 
+impl UserData for PlayerState {}
+impl TealData for PlayerState {}
+impl TypeBody for PlayerState {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.is_user_data = true;
+    }
+}
+
 impl Default for PlayerState {
     fn default() -> Self {
         PlayerState::None
     }
 }
 
-pub fn update_player_states(world: &mut World) {
+pub fn update_player_states(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     let query = world.query_mut::<(
         &mut Transform,
         &mut Player,
@@ -190,37 +204,41 @@ pub fn update_player_states(world: &mut World) {
     }
 }
 
-pub fn update_player_passive_effects(world: &mut World) {
+pub fn update_player_passive_effects(world: Arc<AtomicRefCell<World>>) {
     let mut function_calls = Vec::new();
-
-    for (entity, (player, events)) in world.query::<(&mut Player, &mut PlayerEventQueue)>().iter() {
-        let dt = get_frame_time();
-
-        for effect in &mut player.passive_effects {
-            effect.duration_timer += dt;
-        }
-
-        player
-            .passive_effects
-            .retain(|effect| !effect.is_depleted());
-
-        events.queue.push(PlayerEvent::Update { dt });
-
-        for event in events.queue.iter() {
-            let kind = event.into();
+    {
+        let world = AtomicRefCell::borrow_mut(world.as_ref());
+        for (entity, (player, events)) in
+            world.query::<(&mut Player, &mut PlayerEventQueue)>().iter()
+        {
+            let dt = get_frame_time();
 
             for effect in &mut player.passive_effects {
-                if effect.activated_on.contains(&kind) {
-                    effect.use_cnt += 1;
+                effect.duration_timer += dt;
+            }
 
-                    if let Some(item_entity) = effect.item {
-                        let mut item = world.get_mut::<Item>(item_entity).unwrap();
+            player
+                .passive_effects
+                .retain(|effect| !effect.is_depleted());
 
-                        item.use_cnt += 1;
-                    }
+            events.queue.push(PlayerEvent::Update { dt });
 
-                    if let Some(f) = &effect.function {
-                        function_calls.push((*f, entity, effect.item, event.clone()));
+            for event in events.queue.iter() {
+                let kind = event.into();
+
+                for effect in &mut player.passive_effects {
+                    if effect.activated_on.contains(&kind) {
+                        effect.use_cnt += 1;
+
+                        if let Some(item_entity) = effect.item {
+                            let mut item = world.get_mut::<Item>(item_entity).unwrap();
+
+                            item.use_cnt += 1;
+                        }
+
+                        if let Some(f) = &effect.function {
+                            function_calls.push((f.to_owned(), entity, effect.item, event.clone()));
+                        }
                     }
                 }
             }
@@ -228,7 +246,7 @@ pub fn update_player_passive_effects(world: &mut World) {
     }
 
     for (f, player_entity, item_entity, event) in function_calls.drain(0..) {
-        f(world, player_entity, item_entity, event);
+        f.call_get_lua(world.clone(), player_entity, item_entity, event);
     }
 }
 

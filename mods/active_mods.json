@@ -1,4 +1,5 @@
 [
   "test_mod_one",
-  "test_mod_two"
+  "test_mod_two",
+  "test_lua_mod_one"
 ]

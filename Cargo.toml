@@ -1,10 +1,10 @@
 [package]
+authors = ["Fish Fight Contributors"]
+description = "A tactical 2D shooter"
+edition = "2021"
+license = "MIT OR Apache-2.0"
 name = "fishfight"
 version = "0.4.2"
-description = "A tactical 2D shooter"
-authors = ["Fish Fight Contributors"]
-license = "MIT OR Apache-2.0"
-edition = "2021"
 
 [target.'cfg(target_arch = "wasm32")'.lib]
 crate-type = ["cdylib"]
@@ -19,16 +19,19 @@ members = ["core"]
 opt-level = 3
 
 [dependencies]
-core = { path = "./core", package = "fishfight-core" }
+core = {path = "./core", package = "fishfight-core"}
 # ultimate = { path = "../FishFight-ultimate", package = "fishfight-ultimate", optional = true }
-ff-particles = { version = "0.1", features = ["serde"] }
-fishsticks = { git = "https://github.com/fishfight/fishsticks", default-features = false, features = ["gilrs"] }
-macroquad = { version = "0.3.10" }
+ff-particles = {version = "0.1", features = ["serde"]}
+fishsticks = {git = "https://github.com/fishfight/fishsticks", default-features = false, features = ["gilrs"]}
+hecs = {git = "https://github.com/sdleffler/hv-dev"}
+hv-alchemy = {git = "https://github.com/sdleffler/hv-dev"}
+hv-cell = {git = "https://github.com/sdleffler/hv-dev"}
+hv-lua = {git = "https://github.com/sdleffler/hv-dev"}#imported so its macro's work
+macroquad = {version = "0.3.10"}
 macroquad-platformer = "0.1"
-hecs = "0.7.1"
-serde = { version = "1.0", features = ["derive"] }
+serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
-
+tealr = {git = "https://github.com/lenscas/tealr", branch = "temporary/feature/add_support_for_hv_lua", features = ["mlua", "hv_lua", "mlua_vendored", "mlua_luajit", "mlua_serialize", "mlua_send", "derive"]}
+#tealr = {path = "../tealr/tealr", features = ["mlua", "hv_lua", "mlua_vendored", "mlua_luajit", "mlua_serialize", "mlua_send", "derive"]}
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.74"
-

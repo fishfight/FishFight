@@ -1,10 +1,12 @@
 use hecs::World;
 
+use hv_cell::AtomicRefCell;
 use macroquad::prelude::*;
 
 use core::network::PlayerId;
 
 use core::input::{collect_local_input, GameInputScheme, PlayerInput};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum PlayerControllerKind {
@@ -78,7 +80,8 @@ impl PlayerController {
     }
 }
 
-pub fn update_player_controllers(world: &mut World) {
+pub fn update_player_controllers(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     for (_, controller) in world.query_mut::<&mut PlayerController>() {
         let input = match &controller.kind {
             PlayerControllerKind::LocalInput(input_scheme) => collect_local_input(*input_scheme),

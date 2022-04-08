@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use hv_cell::AtomicRefCell;
 use macroquad::prelude::*;
 
 use hecs::World;
@@ -349,7 +352,8 @@ impl PlayerAnimations {
     }
 }
 
-pub fn update_player_animations(world: &mut World) {
+pub fn update_player_animations(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     for (_, (player, inventory, body, drawable)) in
         world.query_mut::<(&Player, &mut PlayerInventory, &PhysicsBody, &mut Drawable)>()
     {

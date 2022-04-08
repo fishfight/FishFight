@@ -1,9 +1,13 @@
+use hv_cell::AtomicRefCell;
+use hv_lua::{FromLua, ToLua};
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
 use hecs::{Entity, World};
+use tealr::{TypeBody, TypeName};
 
-use core::Transform;
+use core::{lua::wrapped_types::RectLua, Transform};
+use std::{borrow::Cow, sync::Arc};
 
 use crate::{
     AnimatedSprite, AnimatedSpriteMetadata, AnimatedSpriteParams, CollisionWorld, Drawable,
@@ -56,6 +60,7 @@ pub struct PlayerParams {
     pub character: PlayerCharacterMetadata,
 }
 
+#[derive(Clone, TypeName)]
 pub struct Player {
     pub index: u8,
     pub state: PlayerState,
@@ -70,6 +75,94 @@ pub struct Player {
     pub respawn_timer: f32,
     pub camera_box: Rect,
     pub passive_effects: Vec<PassiveEffectInstance>,
+}
+
+impl<'lua> FromLua<'lua> for Player {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = core::lua::get_table(lua_value)?;
+        Ok(Self {
+            index: table.get("index")?,
+            state: table.get("state")?,
+            damage_from_left: table.get("damage_from_left")?,
+            is_facing_left: table.get("is_facing_left")?,
+            is_upside_down: table.get("is_upside_down")?,
+            is_attacking: table.get("is_attacking")?,
+            jump_frame_counter: table.get("jump_frame_counter")?,
+            pickup_grace_timer: table.get("pickup_grace_timer")?,
+            incapacitation_timer: table.get("incapacitation_timer")?,
+            attack_timer: table.get("attack_timer")?,
+            respawn_timer: table.get("respawn_timer")?,
+            camera_box: table.get::<_, RectLua>("camera_box")?.into(),
+            passive_effects: table.get("passive_effects")?,
+        })
+    }
+}
+
+impl<'lua> ToLua<'lua> for Player {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("index", self.index)?;
+        table.set("state", self.state)?;
+        table.set("damage_from_left", self.damage_from_left)?;
+        table.set("is_facing_left", self.is_facing_left)?;
+        table.set("is_upside_down", self.is_upside_down)?;
+        table.set("is_attacking", self.is_attacking)?;
+        table.set("jump_frame_counter", self.jump_frame_counter)?;
+        table.set("pickup_grace_timer", self.pickup_grace_timer)?;
+        table.set("incapacitation_timer", self.incapacitation_timer)?;
+        table.set("attack_timer", self.attack_timer)?;
+        table.set("respawn_timer", self.respawn_timer)?;
+        table.set("camera_box", RectLua::from(self.camera_box))?;
+        table.set("passive_effects", self.passive_effects)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for Player {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields
+            .push((Cow::Borrowed("index").into(), u8::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("state").into(), PlayerState::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("damage_from_left").into(),
+            bool::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("is_facing_left").into(),
+            bool::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("is_upside_down").into(),
+            bool::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_attacking").into(), bool::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("jump_frame_counter").into(),
+            u16::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("pickup_grace_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("incapacitation_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("attack_timer").into(), f32::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("respawn_timer").into(), f32::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("camera_box").into(),
+            RectLua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("passive_effects").into(),
+            Vec::<PassiveEffectInstance>::get_type_parts(),
+        ));
+    }
 }
 
 impl Player {
@@ -94,7 +187,8 @@ impl Player {
     }
 }
 
-pub fn update_player_camera_box(world: &mut World) {
+pub fn update_player_camera_box(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     for (_, (transform, player)) in world.query_mut::<(&Transform, &mut Player)>() {
         let rect = Rect::new(transform.position.x, transform.position.y, 32.0, 60.0);
 

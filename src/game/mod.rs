@@ -5,6 +5,7 @@ pub use camera::GameCamera;
 
 use fishsticks::{Button, GamepadContext};
 
+use hv_cell::AtomicRefCell;
 use macroquad::experimental::collections::storage;
 use macroquad::experimental::scene::{Node, RefMut};
 use macroquad::prelude::*;
@@ -14,10 +15,12 @@ use hecs::{Entity, World};
 
 use core::input::is_gamepad_btn_pressed;
 use core::Result;
+use std::sync::Arc;
 
 use crate::debug;
 use crate::ecs::Scheduler;
 use crate::gui::{self, GAME_MENU_RESULT_MAIN_MENU, GAME_MENU_RESULT_QUIT};
+use crate::lua::run_event;
 use crate::physics::{debug_draw_physics_bodies, fixed_update_physics_bodies};
 use crate::player::{
     draw_weapons_hud, spawn_player, update_player_animations, update_player_camera_box,
@@ -50,7 +53,7 @@ pub enum GameMode {
 }
 
 pub struct Game {
-    world: World,
+    world: Arc<AtomicRefCell<World>>,
     #[allow(dead_code)]
     players: Vec<Entity>,
     updates: Scheduler,
@@ -63,7 +66,6 @@ pub struct Game {
 impl Game {
     pub fn new(mode: GameMode, map: Map, player_params: &[PlayerParams]) -> Result<Game> {
         let mut world = World::default();
-
         {
             let camera = GameCamera::new(map.get_size());
             storage::store(camera);
@@ -149,7 +151,8 @@ impl Game {
             .with_thread_local(debug_draw_rigid_bodies)
             .with_thread_local(debug_draw_active_effects)
             .build();
-
+        let world = Arc::new(AtomicRefCell::new(world));
+        let _ = run_event("init", world.clone());
         let res = Game {
             world,
             players,
@@ -164,7 +167,7 @@ impl Game {
     }
 
     fn on_update(&mut self) {
-        self.updates.execute(&mut self.world);
+        self.updates.execute(self.world.clone());
 
         #[cfg(debug_assertions)]
         if is_key_pressed(macroquad::prelude::KeyCode::U) {
@@ -182,7 +185,7 @@ impl Game {
     }
 
     fn on_fixed_update(&mut self) {
-        self.fixed_updates.execute(&mut self.world);
+        self.fixed_updates.execute(self.world.clone());
     }
 
     fn on_draw(&mut self) {
@@ -194,11 +197,11 @@ impl Game {
             map.draw(None, true);
         }
 
-        self.draws.execute(&mut self.world);
+        self.draws.execute(self.world.clone());
 
         #[cfg(debug_assertions)]
         if debug::is_debug_draw_enabled() {
-            self.debug_draws.execute(&mut self.world);
+            self.debug_draws.execute(self.world.clone());
         }
 
         if gui::is_game_menu_open() {

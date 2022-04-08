@@ -2,18 +2,23 @@
 //! Proto-mods, eventually some of the items will move to some sort of a wasm runtime
 
 use hecs::{Entity, World};
+use hv_lua::{FromLua, ToLua};
 use macroquad::audio::{play_sound_once, Sound};
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 
 use serde::{Deserialize, Serialize};
+use tealr::{TypeBody, TypeName};
 
 use crate::{
     ActiveEffectMetadata, AnimatedSprite, AnimatedSpriteMetadata, CollisionWorld, Drawable,
     PassiveEffectMetadata, PhysicsBody, QueuedAnimationAction, Resources,
 };
 
+use core::lua::get_table;
+use core::lua::wrapped_types::{SoundLua, Vec2Lua};
 use core::{Result, Transform};
+use std::borrow::Cow;
 
 use crate::effects::active::spawn_active_effect;
 use crate::particles::{ParticleEmitter, ParticleEmitterMetadata};
@@ -29,7 +34,7 @@ pub const GROUND_ANIMATION_ID: &str = "ground";
 pub const ATTACK_ANIMATION_ID: &str = "attack";
 
 /// This dictates what happens to an item when it is dropped, either manually or on death.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, TypeName)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemDropBehavior {
     /// Clear all state and restore default parameters
@@ -40,6 +45,21 @@ pub enum ItemDropBehavior {
     Destroy,
 }
 
+impl<'lua> FromLua<'lua> for ItemDropBehavior {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, lua: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        hv_lua::LuaSerdeExt::from_value(lua, lua_value)
+    }
+}
+
+impl<'lua> ToLua<'lua> for ItemDropBehavior {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        hv_lua::LuaSerdeExt::to_value(lua, &self)
+    }
+}
+impl TypeBody for ItemDropBehavior {
+    fn get_type_body(_: &mut tealr::TypeGenerator) {}
+}
+
 impl Default for ItemDropBehavior {
     fn default() -> Self {
         ItemDropBehavior::ClearState
@@ -48,7 +68,7 @@ impl Default for ItemDropBehavior {
 
 /// This dictates what happens to an item when it is depleted, either by exceeding its duration,
 /// in the case of `Equipment`, or by depleting `uses`, if specified, in the case of a `Weapon`
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, TypeName)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemDepleteBehavior {
     /// Keep the item on depletion (do nothing)
@@ -57,6 +77,21 @@ pub enum ItemDepleteBehavior {
     Drop,
     /// Destroy the item on depletion
     Destroy,
+}
+
+impl<'lua> FromLua<'lua> for ItemDepleteBehavior {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, lua: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        hv_lua::LuaSerdeExt::from_value(lua, lua_value)
+    }
+}
+
+impl<'lua> ToLua<'lua> for ItemDepleteBehavior {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        hv_lua::LuaSerdeExt::to_value(lua, &self)
+    }
+}
+impl TypeBody for ItemDepleteBehavior {
+    fn get_type_body(_: &mut tealr::TypeGenerator) {}
 }
 
 impl Default for ItemDepleteBehavior {
@@ -89,6 +124,7 @@ pub struct ItemParams {
     pub is_hat: bool,
 }
 
+#[derive(Clone, TypeName)]
 pub struct Item {
     pub id: String,
     pub name: String,
@@ -101,6 +137,84 @@ pub struct Item {
     pub is_hat: bool,
     pub duration_timer: f32,
     pub use_cnt: u32,
+}
+
+impl<'lua> FromLua<'lua> for Item {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = get_table(lua_value)?;
+        Ok(Self {
+            id: table.get("id")?,
+            name: table.get("name")?,
+            effects: table.get("effects")?,
+            uses: table.get("uses")?,
+            duration: table.get("duration")?,
+            mount_offset: table.get::<_, Vec2Lua>("mount_offset")?.into(),
+            drop_behavior: table.get("drop_behavior")?,
+            deplete_behavior: table.get("deplete_behavior")?,
+            is_hat: table.get("is_hat")?,
+            duration_timer: table.get("duration_timer")?,
+            use_cnt: table.get("use_cnt")?,
+        })
+    }
+}
+
+impl<'lua> ToLua<'lua> for Item {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("id", self.id)?;
+        table.set("name", self.name)?;
+        table.set("effects", self.effects)?;
+        table.set("uses", self.uses)?;
+        table.set("duration", self.duration)?;
+        table.set("mount_offset", Vec2Lua::from(self.mount_offset))?;
+        table.set("drop_behavior", self.drop_behavior)?;
+        table.set("deplete_behavior", self.deplete_behavior)?;
+        table.set("is_hat", self.is_hat)?;
+        table.set("duration_timer", self.duration_timer)?;
+        table.set("use_cnt", self.use_cnt)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for Item {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields
+            .push((Cow::Borrowed("id").into(), String::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("name").into(), String::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("effects").into(),
+            Vec::<PassiveEffectMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("uses").into(),
+            Option::<u32>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("duration").into(),
+            Option::<f32>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("mount_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("drop_behavior").into(),
+            ItemDropBehavior::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("deplete_behavior").into(),
+            ItemDepleteBehavior::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_hat").into(), bool::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("duration_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("use_cnt").into(), u32::get_type_parts()));
+    }
 }
 
 impl Item {
@@ -122,7 +236,7 @@ impl Item {
 }
 
 /// This holds the parameters used when constructing an `Equipment`
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, TypeName)]
 pub struct ItemMetadata {
     /// The effects that will be instantiated when the item is equipped
     #[serde(default)]
@@ -134,6 +248,32 @@ pub struct ItemMetadata {
     /// If this is `true` the item will be treated as a hat
     #[serde(default, rename = "hat", skip_serializing_if = "core::json::is_false")]
     pub is_hat: bool,
+}
+
+impl<'lua> FromLua<'lua> for ItemMetadata {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, lua: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        hv_lua::LuaSerdeExt::from_value(lua, lua_value)
+    }
+}
+impl<'lua> ToLua<'lua> for ItemMetadata {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        hv_lua::LuaSerdeExt::to_value(lua, &self)
+    }
+}
+
+impl TypeBody for ItemMetadata {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields.push((
+            Cow::Borrowed("effects").into(),
+            Vec::<PassiveEffectMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("duration").into(),
+            Option::<f32>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("is_hat").into(), bool::get_type_parts()));
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -340,6 +480,7 @@ impl Default for WeaponParams {
     }
 }
 
+#[derive(Clone, TypeName)]
 pub struct Weapon {
     pub id: String,
     pub name: String,
@@ -355,6 +496,102 @@ pub struct Weapon {
     pub deplete_behavior: ItemDepleteBehavior,
     pub cooldown_timer: f32,
     pub use_cnt: u32,
+}
+
+impl<'lua> FromLua<'lua> for Weapon {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = get_table(lua_value)?;
+        Ok(Self {
+            id: table.get("id")?,
+            name: table.get("name")?,
+            effects: table.get("effects")?,
+            sound_effect: table
+                .get::<_, Option<SoundLua>>("sound_effect")?
+                .map(From::from),
+            recoil: table.get("recoil")?,
+            cooldown: table.get("cooldown")?,
+            attack_duration: table.get("attack_duration")?,
+            uses: table.get("uses")?,
+            mount_offset: table.get::<_, Vec2Lua>("mount_offset")?.into(),
+            effect_offset: table.get::<_, Vec2Lua>("effect_offset")?.into(),
+            drop_behavior: table.get("drop_behavior")?,
+            deplete_behavior: table.get("deplete_behavior")?,
+            cooldown_timer: table.get("cooldown_timer")?,
+            use_cnt: table.get("use_cnt")?,
+        })
+    }
+}
+
+impl<'lua> ToLua<'lua> for Weapon {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("id", self.id)?;
+        table.set("name", self.name)?;
+        table.set("effects", self.effects)?;
+        table.set("sound_effect", self.sound_effect.map(SoundLua::from))?;
+        table.set("recoil", self.recoil)?;
+        table.set("cooldown", self.cooldown)?;
+        table.set("attack_duration", self.attack_duration)?;
+        table.set("uses", self.uses)?;
+        table.set("mount_offset", Vec2Lua::from(self.mount_offset))?;
+        table.set("effect_offset", Vec2Lua::from(self.effect_offset))?;
+        table.set("drop_behavior", self.drop_behavior)?;
+        table.set("deplete_behavior", self.deplete_behavior)?;
+        table.set("cooldown_timer", self.cooldown_timer)?;
+        table.set("use_cnt", self.use_cnt)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for Weapon {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields
+            .push((Cow::Borrowed("id").into(), String::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("name").into(), String::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("effects").into(),
+            Vec::<ActiveEffectMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("sound_effect").into(),
+            Option::<SoundLua>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("recoil").into(), f32::get_type_parts()));
+        gen.fields
+            .push((Cow::Borrowed("cooldown").into(), f32::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("attack_duration").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("uses").into(),
+            Option::<u32>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("mount_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("effect_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("drop_behavior").into(),
+            ItemDropBehavior::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("deplete_behavior").into(),
+            ItemDepleteBehavior::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("cooldown_timer").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("use_cnt").into(), u32::get_type_parts()));
+    }
 }
 
 impl Weapon {
@@ -538,6 +775,55 @@ pub struct WeaponMetadata {
     /// specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_sprite: Option<AnimatedSpriteMetadata>,
+}
+
+impl<'lua> FromLua<'lua> for WeaponMetadata {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, lua: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        hv_lua::LuaSerdeExt::from_value(lua, lua_value)
+    }
+}
+
+impl<'lua> ToLua<'lua> for WeaponMetadata {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        hv_lua::LuaSerdeExt::to_value(lua, &self)
+    }
+}
+
+impl TypeBody for WeaponMetadata {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields.push((
+            Cow::Borrowed("effects").into(),
+            Vec::<ActiveEffectMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("particles").into(),
+            Vec::<ParticleEmitterMetadata>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("sound_effect_id").into(),
+            Option::<String>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("effect_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("uses").into(),
+            Option::<u32>::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("cooldown").into(), f32::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("attack_duration").into(),
+            f32::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("recoil").into(), f32::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("effect_sprite").into(),
+            Option::<AnimatedSpriteMetadata>::get_type_parts(),
+        ));
+    }
 }
 
 impl Default for WeaponMetadata {

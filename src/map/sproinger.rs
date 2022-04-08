@@ -1,7 +1,9 @@
+use hv_cell::AtomicRefCell;
 use macroquad::audio::play_sound_once;
 use macroquad::experimental::collections::storage;
 use macroquad::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use hecs::{Entity, World};
 
@@ -82,7 +84,8 @@ pub fn spawn_sproinger(world: &mut World, position: Vec2) -> Result<Entity> {
     Ok(entity)
 }
 
-pub fn fixed_update_sproingers(world: &mut World) {
+pub fn fixed_update_sproingers(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     let dt = get_frame_time();
 
     let bodies = world

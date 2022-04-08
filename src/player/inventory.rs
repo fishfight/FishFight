@@ -1,8 +1,15 @@
+use hv_cell::AtomicRefCell;
+use hv_lua::{FromLua, ToLua};
 use macroquad::prelude::*;
 
 use hecs::{Entity, With, Without, World};
+use tealr::{TypeBody, TypeName};
 
+use core::lua::get_table;
+use core::lua::wrapped_types::Vec2Lua;
 use core::Transform;
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::items::{
     fire_weapon, ItemDepleteBehavior, ItemDropBehavior, Weapon, EFFECT_ANIMATED_SPRITE_ID,
@@ -14,7 +21,7 @@ use crate::{Drawable, Item, Owner, PassiveEffectInstance, PhysicsBody};
 
 const THROW_FORCE: f32 = 5.0;
 
-#[derive(Default)]
+#[derive(Clone, TypeName, Default)]
 pub struct PlayerInventory {
     pub weapon_mount: Vec2,
     pub weapon_mount_offset: Vec2,
@@ -25,6 +32,80 @@ pub struct PlayerInventory {
     pub weapon: Option<Entity>,
     pub items: Vec<Entity>,
     pub hat: Option<Entity>,
+}
+
+impl<'lua> FromLua<'lua> for PlayerInventory {
+    fn from_lua(lua_value: hv_lua::Value<'lua>, _: &'lua hv_lua::Lua) -> hv_lua::Result<Self> {
+        let table = get_table(lua_value)?;
+        Ok(Self {
+            weapon_mount: table.get::<_, Vec2Lua>("weapon_mount")?.into(),
+            weapon_mount_offset: table.get::<_, Vec2Lua>("weapon_mount_offset")?.into(),
+            item_mount: table.get::<_, Vec2Lua>("item_mount")?.into(),
+            item_mount_offset: table.get::<_, Vec2Lua>("item_mount_offset")?.into(),
+            hat_mount: table.get::<_, Vec2Lua>("hat_mount")?.into(),
+            hat_mount_offset: table.get::<_, Vec2Lua>("hat_mount_offset")?.into(),
+            weapon: table.get("weapon")?,
+            items: table.get("items")?,
+            hat: table.get("hat")?,
+        })
+    }
+}
+impl<'lua> ToLua<'lua> for PlayerInventory {
+    fn to_lua(self, lua: &'lua hv_lua::Lua) -> hv_lua::Result<hv_lua::Value<'lua>> {
+        let table = lua.create_table()?;
+        table.set("weapon_mount", Vec2Lua::from(self.weapon_mount))?;
+        table.set(
+            "weapon_mount_offset",
+            Vec2Lua::from(self.weapon_mount_offset),
+        )?;
+        table.set("item_mount", Vec2Lua::from(self.item_mount))?;
+        table.set("item_mount_offset", Vec2Lua::from(self.item_mount_offset))?;
+        table.set("hat_mount", Vec2Lua::from(self.hat_mount))?;
+        table.set("hat_mount_offset", Vec2Lua::from(self.hat_mount_offset))?;
+        table.set("weapon", self.weapon)?;
+        table.set("items", self.items)?;
+        table.set("hat", self.hat)?;
+        lua.pack(table)
+    }
+}
+
+impl TypeBody for PlayerInventory {
+    fn get_type_body(gen: &mut tealr::TypeGenerator) {
+        gen.fields.push((
+            Cow::Borrowed("weapon_mount").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("weapon_mount_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("item_mount").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("item_mount_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields
+            .push((Cow::Borrowed("hat_mount").into(), Vec2Lua::get_type_parts()));
+        gen.fields.push((
+            Cow::Borrowed("hat_mount_offset").into(),
+            Vec2Lua::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("weapon").into(),
+            Option::<Entity>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("items").into(),
+            Vec::<Entity>::get_type_parts(),
+        ));
+        gen.fields.push((
+            Cow::Borrowed("hat").into(),
+            Option::<Entity>::get_type_parts(),
+        ));
+    }
 }
 
 impl PlayerInventory {
@@ -52,7 +133,8 @@ impl PlayerInventory {
     }
 }
 
-pub fn update_player_inventory(world: &mut World) {
+pub fn update_player_inventory(world: Arc<AtomicRefCell<World>>) {
+    let mut world = AtomicRefCell::borrow_mut(world.as_ref());
     let mut item_colliders = world
         .query::<With<Item, Without<Owner, (&Transform, &PhysicsBody)>>>()
         .iter()
@@ -424,7 +506,7 @@ pub fn update_player_inventory(world: &mut World) {
     }
 
     for (entity, owner) in to_fire.drain(0..) {
-        if let Err(err) = fire_weapon(world, entity, owner) {
+        if let Err(err) = fire_weapon(&mut world, entity, owner) {
             #[cfg(debug_assertions)]
             println!("WARNING: {}", err);
         }
@@ -456,7 +538,8 @@ const HUD_USE_COUNT_COLOR_EMPTY: Color = Color {
     a: 0.8,
 };
 
-pub fn draw_weapons_hud(world: &mut World) {
+pub fn draw_weapons_hud(world: Arc<AtomicRefCell<World>>) {
+    let world = AtomicRefCell::borrow(world.as_ref());
     for (_, (transform, inventory)) in world.query::<(&Transform, &PlayerInventory)>().iter() {
         if let Some(weapon_entity) = inventory.weapon {
             let weapon = world.get::<Weapon>(weapon_entity).unwrap();

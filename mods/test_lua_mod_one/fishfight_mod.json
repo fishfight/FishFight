@@ -1,0 +1,7 @@
+{
+    "id": "test_lua_mod_one_id_is_different",
+    "name": "Test Lua Mod One",
+    "description": "This is a mod meant for testing the lua integration",
+    "version": "0.1.0",
+    "kind": "full"
+}
