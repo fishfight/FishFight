@@ -28,7 +28,7 @@ pub mod drawables;
 pub use drawables::*;
 pub use physics::*;
 
-use editor::{Editor, EditorCamera, EditorInputScheme};
+use editor::EditorInputScheme;
 
 use map::{Map, MapLayerKind, MapObjectKind};
 
@@ -108,6 +108,8 @@ fn window_conf() -> Conf {
 async fn init_game() -> Result<bool> {
     use gui::MainMenuResult;
 
+    use crate::editor::{Editor, EditorNode};
+
     match gui::show_main_menu().await {
         MainMenuResult::LocalGame { map, players } => {
             let game = Game::new(GameMode::Local, *map, &players)?;
@@ -130,10 +132,7 @@ async fn init_game() -> Result<bool> {
                 gui::show_select_map_menu().await
             };
 
-            let position = map_resource.map.get_size() * 0.5;
-
-            scene::add_node(EditorCamera::new(position));
-            scene::add_node(Editor::new(input_scheme, map_resource));
+            scene::add_node(EditorNode::new(Editor::new(map_resource), input_scheme));
         }
         MainMenuResult::ReloadResources => {
             reload_resources();

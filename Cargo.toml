@@ -22,13 +22,22 @@ opt-level = 3
 core = { path = "./core", package = "fishfight-core" }
 # ultimate = { path = "../FishFight-ultimate", package = "fishfight-ultimate", optional = true }
 ff-particles = { version = "0.1", features = ["serde"] }
-fishsticks = { git = "https://github.com/fishfight/fishsticks", default-features = false, features = ["gilrs"] }
+fishsticks = { git = "https://github.com/fishfight/fishsticks", default-features = false, features = [
+    "gilrs",
+] }
 macroquad = { version = "0.3.10" }
 macroquad-platformer = "0.1"
 hecs = "0.7.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+egui = "0.18.1"
+egui_extras = { git = "https://github.com/aleokdev/egui" }
+egui-macroquad = "0.9.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.74"
 
+[patch.crates-io]
+# Temporal patch until https://github.com/optozorax/egui-macroquad/pull/17 gets merged
+egui-macroquad = { git = "https://github.com/aleokdev/egui-macroquad" }
+egui = { git = "https://github.com/aleokdev/egui" }

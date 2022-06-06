@@ -1,0 +1,13 @@
+- [X] Object list
+- [X] Spawnpoint placement
+- [X] Spawnpoint selection & movement
+- [X] Object placement via rightclick context menu
+- [X] Re-add object placement tool
+- [X] Moving camera via middle click
+- [X] Open map window
+- [X] Import map window
+- [X] New map window
+- [X] Background edit window
+- [X] Map zoom
+- [ ] Theme support
+- [ ] Gamepad support

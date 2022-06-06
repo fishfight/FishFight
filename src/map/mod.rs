@@ -21,7 +21,6 @@ use core::text::ToStringHelper;
 use core::Result;
 
 use crate::{
-    editor::gui::combobox::ComboBoxValue,
     json::{self, TiledMap},
     Resources,
 };
@@ -467,27 +466,6 @@ impl MapLayerKind {
     }
 }
 
-impl ComboBoxValue for MapLayerKind {
-    fn get_index(&self) -> usize {
-        match self {
-            Self::TileLayer => 0,
-            Self::ObjectLayer => 1,
-        }
-    }
-
-    fn set_index(&mut self, index: usize) {
-        *self = match index {
-            0 => Self::TileLayer,
-            1 => Self::ObjectLayer,
-            _ => unreachable!(),
-        }
-    }
-
-    fn get_options(&self) -> Vec<String> {
-        Self::options().iter().map(|s| s.to_string()).collect()
-    }
-}
-
 impl Default for MapLayerKind {
     fn default() -> Self {
         MapLayerKind::TileLayer
@@ -568,6 +546,16 @@ pub enum MapObjectKind {
     Decoration,
 }
 
+impl std::fmt::Display for MapObjectKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapObjectKind::Item => f.write_str("Item"),
+            MapObjectKind::Environment => f.write_str("Environment"),
+            MapObjectKind::Decoration => f.write_str("Decoration"),
+        }
+    }
+}
+
 impl MapObjectKind {
     const ITEM: &'static str = "item";
     const ENVIRONMENT: &'static str = "environment";
@@ -605,29 +593,6 @@ impl From<MapObjectKind> for String {
             MapObjectKind::Environment => MapObjectKind::ENVIRONMENT.to_string(),
             MapObjectKind::Decoration => MapObjectKind::DECORATION.to_string(),
         }
-    }
-}
-
-impl ComboBoxValue for MapObjectKind {
-    fn get_index(&self) -> usize {
-        match self {
-            Self::Item => 0,
-            Self::Environment => 1,
-            Self::Decoration => 2,
-        }
-    }
-
-    fn set_index(&mut self, index: usize) {
-        *self = match index {
-            0 => Self::Item,
-            1 => Self::Environment,
-            2 => Self::Decoration,
-            _ => unreachable!(),
-        }
-    }
-
-    fn get_options(&self) -> Vec<String> {
-        Self::options().iter().map(|s| s.to_string()).collect()
     }
 }
 
